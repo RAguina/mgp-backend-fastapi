@@ -347,7 +347,7 @@ async def test_lab_connection():
         orchestrator_available = False
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{LAB_API_URL}/orchestrate")
+                response = await client.get(f"{LAB_API_URL}/api/orchestrate")
                 orchestrator_available = response.status_code in [200, 405]  # 405 = Method not allowed (pero existe)
         except:
             pass

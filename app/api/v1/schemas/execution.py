@@ -16,9 +16,9 @@ class ExecutionRequest(BaseModel):
     model: Optional[str] = Field("mistral7b", description="Modelo a usar")
     
     # ✅ NUEVO: Diferenciador de tipo de ejecución (DEFAULT = "simple")
-    execution_type: Literal["simple", "orchestrator"] = Field(
+    execution_type: Literal["simple", "orchestrator", "challenge"] = Field(
         "simple", 
-        description="Tipo de ejecución: simple (LLM directo) u orchestrator (LangGraph)"
+        description="Tipo de ejecución: simple (LLM directo), orchestrator (LangGraph) o challenge (flujo avanzado)"
     )
     
     # Campos para simple LLM (MANTIENEN compatibilidad)
@@ -42,6 +42,7 @@ class ExecutionRequest(BaseModel):
     verbose: Optional[bool] = Field(False, description="Logging detallado")
     enable_history: Optional[bool] = Field(True, description="Incluir historial")
     retry_on_error: Optional[bool] = Field(True, description="Reintentar en caso de error")
+    flow_type: Optional[str] = Field(None, description="Tipo de flujo (para challenge)")
 
 
 class ExecutionResult(BaseModel):

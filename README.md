@@ -48,7 +48,7 @@ backend/
 
 
 3. Ejecutar el servidor
-
+venv\Scripts\Activate.ps1
 uvicorn app.main:app --reload
 
 

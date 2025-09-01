@@ -34,8 +34,8 @@ async def execute_prompt(request: ExecutionRequest) -> ExecutionResult:
     logger.info(f"[{execution_id}] Prompt: {request.prompt[:100]}...")
     
     try:
-        if request.execution_type == "orchestrator":
-            # ✅ CORRECTO: Llamada API al lab (como simple)
+        if request.execution_type in ["orchestrator", "challenge"]:
+            # ✅ CORRECTO: Tanto orchestrator como challenge usan el mismo endpoint
             result = await _execute_orchestrator_via_api(request, execution_id)
             
         elif request.execution_type == "simple":
@@ -86,17 +86,21 @@ async def _execute_orchestrator_via_api(request: ExecutionRequest, execution_id:
     logger.info(f"[{execution_id}] Tools: {request.tools}")
     
     try:
-        # ✅ NUEVO ENDPOINT: Necesitarás agregarlo al lab
+        # ✅ NUEVO ENDPOINT: Payload actualizado para manejar challenge
         orchestrator_payload = {
             "prompt": request.prompt,
             "model": request.model,
-            "execution_type": "orchestrator",
+            "execution_type": request.execution_type,  # Pasar el tipo real (orchestrator/challenge)
             "agents": request.agents or [],
             "tools": request.tools or [],
             "verbose": request.verbose,
             "enable_history": request.enable_history,
             "retry_on_error": request.retry_on_error
         }
+        
+        # Agregar flow_type si es challenge
+        if request.execution_type == "challenge":
+            orchestrator_payload["flow_type"] = "challenge"
         
         async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
             # Health check primero
@@ -105,10 +109,11 @@ async def _execute_orchestrator_via_api(request: ExecutionRequest, execution_id:
                 raise Exception("Lab service not available")
             
             logger.info(f"[{execution_id}] Calling lab orchestrator endpoint")
+            logger.info(f"[{execution_id}] Payload sent to Lab: {orchestrator_payload}")
             
-            # ✅ NUEVO: Llamada al endpoint /orchestrate (pendiente crear en lab)
+            # ✅ NUEVO: Llamada al endpoint /orchestrate (sin slash final)
             response = await client.post(
-                f"{LAB_API_URL}/orchestrate",  # ✅ NUEVO ENDPOINT
+                f"{LAB_API_URL}/orchestrate",  # ✅ ENDPOINT SIN SLASH
                 json=orchestrator_payload,
                 timeout=REQUEST_TIMEOUT
             )
@@ -117,6 +122,11 @@ async def _execute_orchestrator_via_api(request: ExecutionRequest, execution_id:
                 raise Exception(f"Lab orchestrator error: {response.status_code}")
             
             lab_result = response.json()
+        
+        # 🔍 DEBUG: Log completo de la respuesta del Lab
+        logger.info(f"[{execution_id}] Lab V4 Response Status: {response.status_code}")
+        logger.info(f"[{execution_id}] Lab V4 Response Headers: {dict(response.headers)}")
+        logger.info(f"[{execution_id}] Lab V4 Response Body: {lab_result}")
         
         # Verificar que la respuesta sea exitosa
         if not lab_result.get('success', False):
@@ -347,7 +357,7 @@ async def test_lab_connection():
         orchestrator_available = False
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
-                response = await client.get(f"{LAB_API_URL}/api/orchestrate")
+                response = await client.get(f"{LAB_API_URL}/orchestrate")
                 orchestrator_available = response.status_code in [200, 405]  # 405 = Method not allowed (pero existe)
         except:
             pass

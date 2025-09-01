@@ -2,8 +2,10 @@
 
 import logging
 import time
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 
 from app.api.v1.routes.execute import router as execute_router
 from app.api.v1.routes.health import router as health_router
@@ -32,6 +34,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Exception handlers para debugging
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    """
+    Handler para capturar errores 422 de validación y loggearlos
+    """
+    body = await request.body()
+    logger.error(f"🔍 VALIDATION ERROR 422:")
+    logger.error(f"Request URL: {request.url}")
+    logger.error(f"Request method: {request.method}")
+    logger.error(f"Request body: {body.decode('utf-8') if body else 'No body'}")
+    logger.error(f"Validation errors: {exc.errors()}")
+    
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": exc.errors(),
+            "body": body.decode('utf-8') if body else None,
+            "message": "Request validation failed"
+        }
+    )
 
 # Registrar rutas (health primero para máxima eficiencia)
 app.include_router(health_router, prefix="/api/v1", tags=["Health"])

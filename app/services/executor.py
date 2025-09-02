@@ -86,11 +86,22 @@ async def _execute_orchestrator_via_api(request: ExecutionRequest, execution_id:
     logger.info(f"[{execution_id}] Tools: {request.tools}")
     
     try:
-        # ✅ NUEVO ENDPOINT: Payload actualizado para manejar challenge
+        # ✅ Mapeo escalable entre execution_type del backend y flow_type del lab
+        flow_type_mapping = {
+            "orchestrator": "orchestrator",
+            "challenge": "challenge",
+            "simple": "simple"  # Por si el lab maneja simple flows también
+        }
+        
+        flow_type = flow_type_mapping.get(request.execution_type, "orchestrator")
+        logger.info(f"[{execution_id}] Mapped execution_type '{request.execution_type}' to flow_type '{flow_type}'")
+        
+        # ✅ NUEVO ENDPOINT: Payload actualizado con flow_type siempre explícito
         orchestrator_payload = {
             "prompt": request.prompt,
             "model": request.model,
-            "execution_type": request.execution_type,  # Pasar el tipo real (orchestrator/challenge)
+            "flow_type": flow_type,  # ✅ Siempre enviado explícitamente
+            "execution_type": request.execution_type,  # Mantener para compatibilidad
             "agents": request.agents or [],
             "tools": request.tools or [],
             "verbose": request.verbose,
@@ -98,11 +109,20 @@ async def _execute_orchestrator_via_api(request: ExecutionRequest, execution_id:
             "retry_on_error": request.retry_on_error
         }
         
-        # Agregar flow_type si es challenge
-        if request.execution_type == "challenge":
-            orchestrator_payload["flow_type"] = "challenge"
+        # ✅ RAG FIELDS: Transparent pass-through al Lab (solo si están presentes)
+        if request.embedding_model:
+            orchestrator_payload["embedding_model"] = request.embedding_model
+            logger.info(f"[{execution_id}] RAG Embedding Model: {request.embedding_model}")
+            
+        if request.vector_store:
+            orchestrator_payload["vector_store"] = request.vector_store
+            logger.info(f"[{execution_id}] RAG Vector Store: {request.vector_store}")
+            
+        if request.rag_config:
+            orchestrator_payload["rag_config"] = request.rag_config
+            logger.info(f"[{execution_id}] RAG Config: {request.rag_config}")
         
-        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
             # Health check primero
             health_response = await client.get(f"{LAB_API_URL}/health")
             if health_response.status_code != 200:
@@ -111,9 +131,9 @@ async def _execute_orchestrator_via_api(request: ExecutionRequest, execution_id:
             logger.info(f"[{execution_id}] Calling lab orchestrator endpoint")
             logger.info(f"[{execution_id}] Payload sent to Lab: {orchestrator_payload}")
             
-            # ✅ NUEVO: Llamada al endpoint /orchestrate (sin slash final)
+            # ✅ NUEVO: Llamada al endpoint /orchestrate (httpx seguirá redirects automáticamente)
             response = await client.post(
-                f"{LAB_API_URL}/orchestrate",  # ✅ ENDPOINT SIN SLASH
+                f"{LAB_API_URL}/orchestrate",  # ✅ ENDPOINT - httpx seguirá el 307 redirect
                 json=orchestrator_payload,
                 timeout=REQUEST_TIMEOUT
             )
@@ -251,7 +271,7 @@ async def check_lab_health() -> bool:
     Verifica que el Lab API esté disponible.
     """
     try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
+        async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
             response = await client.get(f"{LAB_API_URL}/health")
             return response.status_code == 200
     except Exception as e:
@@ -264,7 +284,7 @@ async def get_available_models() -> Dict[str, str]:
     Obtiene los modelos disponibles del Lab API.
     """
     try:
-        async with httpx.AsyncClient(timeout=10.0) as client:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as client:
             response = await client.get(f"{LAB_API_URL}/models")
             response.raise_for_status()
             
@@ -290,7 +310,7 @@ async def call_lab_inference(request: ExecutionRequest) -> Dict[str, Any]:
     logger.info(f"Calling lab inference: model={request.model}, strategy={request.strategy}")
     
     try:
-        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT) as client:
+        async with httpx.AsyncClient(timeout=REQUEST_TIMEOUT, follow_redirects=True) as client:
             response = await client.post(
                 f"{LAB_API_URL}/inference/",
                 json=payload
@@ -356,7 +376,7 @@ async def test_lab_connection():
         # ✅ Test del nuevo endpoint de orchestrator
         orchestrator_available = False
         try:
-            async with httpx.AsyncClient(timeout=5.0) as client:
+            async with httpx.AsyncClient(timeout=5.0, follow_redirects=True) as client:
                 response = await client.get(f"{LAB_API_URL}/orchestrate")
                 orchestrator_available = response.status_code in [200, 405]  # 405 = Method not allowed (pero existe)
         except:

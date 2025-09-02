@@ -21,6 +21,23 @@ class ExecutionRequest(BaseModel):
         description="Tipo de ejecución: simple (LLM directo), orchestrator (LangGraph) o challenge (flujo avanzado)"
     )
     
+    # ✅ RAG FIELDS: Pass-through opcionales para el Lab
+    embedding_model: Optional[str] = Field(
+        None, 
+        description="Modelo de embeddings para RAG",
+        examples=["bge-m3", "e5-large", "openai-embed"]
+    )
+    vector_store: Optional[str] = Field(
+        None,
+        description="Base de datos vectorial para RAG", 
+        examples=["milvus", "weaviate", "pinecone"]
+    )
+    rag_config: Optional[dict] = Field(
+        None,
+        description="Configuración específica de RAG",
+        examples=[{"top_k": 5, "threshold": 0.7, "chunk_size": 512}]
+    )
+    
     # Campos para simple LLM (MANTIENEN compatibilidad)
     strategy: Optional[str] = Field("optimized", description="Estrategia de ejecución")
     temperature: Optional[float] = Field(0.7, ge=0, le=1, description="Temperatura del modelo")
